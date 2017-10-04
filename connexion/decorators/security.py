@@ -8,6 +8,11 @@ import requests
 
 from ..exceptions import OAuthProblem, OAuthResponseProblem, OAuthScopeProblem
 
+# added by matthiasfaeth
+from jose import jwt
+OAUTH_SECRET = os.getenv('OAUTH_SECRET', None)
+# ---
+
 logger = logging.getLogger('connexion.api.security')
 
 # use connection pool for OAuth tokeninfo
@@ -63,18 +68,32 @@ def verify_oauth(token_info_url, allowed_scopes, function):
             except ValueError:
                 raise OAuthProblem(description='Invalid authorization header')
             logger.debug("... Getting token from %s", token_info_url)
-            token_request = session.get(token_info_url, params={'access_token': token}, timeout=5)
-            logger.debug("... Token info (%d): %s", token_request.status_code, token_request.text)
-            if not token_request.ok:
-                raise OAuthResponseProblem(
-                    description='Provided oauth token is not valid',
-                    token_response=token_request
-                )
-            token_info = token_request.json()  # type: dict
-            if isinstance(token_info['scope'], list):
-                user_scopes = set(token_info['scope'])
+            # added by matthiasfaeth
+            if OAUTH_SECRET is None:
+                # connexion code executed when OAUTH_SECRET is not defined
+                token_request = session.get(token_info_url, params={'access_token': token}, timeout=5)
+                logger.debug("... Token info (%d): %s", token_request.status_code, token_request.text)
+                if not token_request.ok:
+                    raise OAuthResponseProblem(
+                        description='Provided oauth token is not valid',
+                        token_response=token_request
+                    )
+                token_info = token_request.json()  # type: dict
+                if isinstance(token_info['scope'], list):
+                    user_scopes = set(token_info['scope'])
+                else:
+                    user_scopes = set(token_info['scope'].split())
             else:
-                user_scopes = set(token_info['scope'].split())
+                # added by matthiasfaeth and executed when OAUTH_SECRET is defined 
+                #     in order to verify JSON Web Token in place rather than through an additional request
+                logger.debug("security decorator: OAUTH_SECRET = {}".format(OAUTH_SECRET))
+                logger.debug("security decorator: JWT = {}".format(token))
+                try:
+                    token_info = jwt.decode(token, OAUTH_SECRET, algorithms="HS256")
+                except jwt.JWTError:
+                    raise OAuthResponseProblem(description='Provided JWT oauth token is not valid', token_response=401)
+                user_scopes = set(token_info['scope'])
+            # ---
             logger.debug("... Scopes required: %s", allowed_scopes)
             logger.debug("... User scopes: %s", user_scopes)
             if not allowed_scopes <= user_scopes:
