@@ -3,6 +3,7 @@ import logging
 import flask
 import six
 import werkzeug.exceptions
+import yaml
 
 from connexion.apis import flask_utils
 from connexion.apis.abstract import AbstractAPI
@@ -41,6 +42,11 @@ class FlaskApi(AbstractAPI):
                                     endpoint_name,
                                     lambda: flask.jsonify(self.specification))
 
+        endpoint_name = "{name}_swagger_yaml".format(name=self.blueprint.name)
+        self.blueprint.add_url_rule('/swagger.yaml',
+                                    endpoint_name,
+                                    lambda: yaml.dump(self.specification))
+                                    
     def add_swagger_ui(self):
         """
         Adds swagger ui to {base_path}/ui/
@@ -64,8 +70,8 @@ class FlaskApi(AbstractAPI):
 
         self.blueprint.add_url_rule(console_ui_url,
                                     index_endpoint_name,
-                                    self._handlers.console_ui_home)
-
+                                    self._handlers.console_ui_home)                                    
+                                    
     def add_auth_on_not_found(self, security, security_definitions):
         """
         Adds a 404 error handler to authenticate and only expose the 404 status if the security validation pass.
@@ -302,3 +308,4 @@ class InternalHandlers(object):
         # convert PosixPath to str
         static_dir = str(self.options.openapi_console_ui_from_dir)
         return flask.send_from_directory(static_dir, filename)
+
